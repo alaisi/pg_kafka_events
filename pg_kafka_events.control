@@ -1,0 +1,3 @@
+comment = 'PostgreSQL Kafka Events'
+default_version = '1.0'
+relocatable = false
