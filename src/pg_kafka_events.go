@@ -1,8 +1,6 @@
 package main
 
 /*
-#include <unistd.h>
-
 #include "postgres.h"
 #include "fmgr.h"
 #include "postmaster/bgworker.h"
@@ -16,14 +14,13 @@ static void pg_kafka_publisher_main(Datum arg)
 	PgKafkaWorker();
 }
 
-void _PG_init(void) {
+void _PG_init(void)
+{
 	ereport(LOG, (errmsg("pg_kafka_events started")));
 
 	BackgroundWorker worker;
-
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 	worker.bgw_restart_time = 60;
-	worker.bgw_main_arg = Int32GetDatum(0);
 	worker.bgw_notify_pid = 0;
 	worker.bgw_main = pg_kafka_publisher_main;
 
@@ -31,7 +28,8 @@ void _PG_init(void) {
 
 }
 
-void _PG_fini(void) {
+void _PG_fini(void)
+{
 	ereport(LOG, (errmsg("pg_kafka_events stopped")));
 }
 */

@@ -12,3 +12,6 @@ gosrc := $(wildcard src/*.go)
 
 pg_kafka_events.so: $(gosrc)
 	CGO_CFLAGS="-I$(INCLUDEDIR)" CGO_LDFLAGS="$(LDFLAGS) -Wl,-unresolved-symbols=ignore-all" go build -buildmode=c-shared -o pg_kafka_events.so $(gosrc)
+
+standalone: $(gosrc)
+	CGO_CFLAGS="-I$(INCLUDEDIR)" CGO_LDFLAGS="$(LDFLAGS) -Wl,-unresolved-symbols=ignore-all" go build -o pg_kafka_events $(gosrc)
