@@ -2,13 +2,15 @@
 
 PostgreSQL extension for publishing data changes to Apache Kafka.
 
+[logo]: http://kafka.apache.org/images/kafka_diagram.png "Kafka"
+
 ### Installation
 
 Building the extension
 
 ```bash
 $ make
-# sudo make install
+$ sudo make install
 ```
 
 ```
