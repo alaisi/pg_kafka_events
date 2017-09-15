@@ -2,7 +2,7 @@
 
 PostgreSQL extension for publishing data changes to Apache Kafka.
 
-[logo]: http://kafka.apache.org/images/kafka_diagram.png "Kafka"
+![alt text](http://kafka.apache.org/images/kafka_diagram.png "Kafka")
 
 ### Installation
 
