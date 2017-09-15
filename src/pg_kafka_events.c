@@ -12,11 +12,18 @@
 #include "fmgr.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
+#include "utils/guc.h"
 
 PG_MODULE_MAGIC;
 
 extern void _PG_init(void);
 extern void _PG_fini(void);
+
+// set from postgresql.conf
+char* DATABASE_NAME;
+char* KAFKA_SERVERS;
+char* KAFKA_TOPIC;
+char* RECVLOGICAL_BIN;
 
 static bool run = true;
 static pid_t child_pid = -1;
@@ -24,42 +31,10 @@ static pid_t child_pid = -1;
 static char buf[4096 * 16];
 static int buf_index = 0;
 
-static void pg_kafka_log_err(char* msg) {
-    ereport(WARNING, (errmsg("%s:%d %s: %s",
-                             __FILE__, __LINE__,
-                             msg, strerror(errno))));
-}
-
-static void pg_kafka_sigterm(SIGNAL_ARGS)
-{
-    ereport(LOG, (errmsg("pg_kafka_publisher_closing")));
-    run = false;
-    if(child_pid > 0) {
-        kill(child_pid, SIGINT);
-    }
-}
-
-static void pg_kafka_exec_revclocal(int* pipes)
-{
-    close(pipes[0]);
-    dup2(pipes[1], STDOUT_FILENO);
-    
-    execl("/usr/bin/pg_recvlogical",
-          "--create-slot", "--if-not-exists",
-          "--start",
-          "-f", "-",
-          "-S", "kafka_events",
-          "-P", "decoding_json",
-          "-d", "postgres",
-          NULL);
-    pg_kafka_log_err("recvlogical failed");
-    exit(-1);
-}
-
 static rd_kafka_t* pg_kafka_open_producer() {
     char str[512];
     rd_kafka_conf_t* conf = rd_kafka_conf_new();
-    if(rd_kafka_conf_set(conf, "bootstrap.servers", "localhost:9092", str, sizeof(str)) != RD_KAFKA_CONF_OK) {
+    if(rd_kafka_conf_set(conf, "bootstrap.servers", KAFKA_SERVERS, str, sizeof(str)) != RD_KAFKA_CONF_OK) {
         ereport(WARNING, (errmsg("rd_kafka_conf_set: %s", str)));
     }
     rd_kafka_t* producer;
@@ -71,7 +46,7 @@ static rd_kafka_t* pg_kafka_open_producer() {
 
 static rd_kafka_topic_t* pg_kafka_open_topic(rd_kafka_t* producer) {
     rd_kafka_topic_t* topic;
-    if(!(topic = rd_kafka_topic_new(producer, "pg.messages", NULL))) {
+    if(!(topic = rd_kafka_topic_new(producer, KAFKA_TOPIC, NULL))) {
         ereport(WARNING, (errmsg("rd_kafka_topic_new: %s", rd_kafka_err2str(rd_kafka_last_error()))));
     }
     return topic;
@@ -102,18 +77,24 @@ static void pg_kafka_publish_messages(char* str, int r, rd_kafka_t* producer, rd
                                 RD_KAFKA_MSG_F_COPY, msg, len,
                                 NULL, 0, NULL) == -1) {
                 ereport(WARNING, (errmsg("rd_kafka_produce: %s", rd_kafka_err2str(rd_kafka_last_error()))));
+            } else {
+                ereport(NOTICE, (errmsg("published kafka msg: '%s'", msg)));
             }
-            ereport(LOG, (errmsg("published kafka msg: '%s'", msg)));
         }
         
         if(len != buf_index - 2) {
             memcpy(buf, buf + len + 1, buf_index - len);
-            buf_index = buf_index - len;
+            buf_index = buf_index - len - 1;
         } else {
             break;
         }
     }
-    buf_index = 0;
+}
+
+static void pg_kafka_log_err(char* msg) {
+    ereport(WARNING, (errmsg("%s:%d %s: %s",
+                             __FILE__, __LINE__,
+                             msg, strerror(errno))));
 }
 
 static void pg_kafka_publisher_loop(int pipe)
@@ -141,6 +122,32 @@ static void pg_kafka_publisher_loop(int pipe)
     ereport(LOG, (errmsg("pg_kafka_publisher_loop closing")));
     rd_kafka_topic_destroy(topic);
     rd_kafka_destroy(producer);
+}
+
+static void pg_kafka_exec_revclocal(int* pipes)
+{
+    close(pipes[0]);
+    dup2(pipes[1], STDOUT_FILENO);
+    
+    execl(RECVLOGICAL_BIN,
+          "--create-slot", "--if-not-exists",
+          "--start",
+          "-f", "-",
+          "-S", "kafka_events",
+          "-P", "decoding_json",
+          "-d", DATABASE_NAME,
+          NULL);
+    pg_kafka_log_err("recvlogical failed");
+    exit(-1);
+}
+
+static void pg_kafka_sigterm(SIGNAL_ARGS)
+{
+    ereport(LOG, (errmsg("pg_kafka_publisher_closing")));
+    run = false;
+    if(child_pid > 0) {
+        kill(child_pid, SIGINT);
+    }
 }
 
 static void pg_kafka_publisher_main(Datum arg)
@@ -176,6 +183,42 @@ void _PG_init(void)
 {
     ereport(LOG, (errmsg("pg_kafka_events started")));
 
+    DefineCustomStringVariable("kafka.database_name",
+                               gettext_noop("Database to replicate from."),
+                               NULL,
+                               &DATABASE_NAME,
+                               "postgres",
+                               PGC_POSTMASTER,
+                               GUC_SUPERUSER_ONLY,
+                               NULL, NULL, NULL);
+    
+    DefineCustomStringVariable("kafka.bootstrap_servers",
+                               gettext_noop("Kafka bootstrap servers to connect to."),
+                               NULL,
+                               &KAFKA_SERVERS,
+                               "localhost:9092",
+                               PGC_POSTMASTER,
+                               GUC_SUPERUSER_ONLY,
+                               NULL, NULL, NULL);
+
+    DefineCustomStringVariable("kafka.topic",
+                               gettext_noop("Kafka topic to publish to."),
+                               NULL,
+                               &KAFKA_TOPIC,
+                               "pg.messages",
+                               PGC_POSTMASTER,
+                               GUC_SUPERUSER_ONLY,
+                               NULL, NULL, NULL);
+    
+    DefineCustomStringVariable("kafka.recvlogical_bin",
+                               gettext_noop("pg_recvlogical binary to use."),
+                               NULL,
+                               &RECVLOGICAL_BIN,
+                               "/usr/bin/pg_recvlogical",
+                               PGC_POSTMASTER,
+                               GUC_SUPERUSER_ONLY,
+                               NULL, NULL, NULL);
+    
     BackgroundWorker worker;
     worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
     worker.bgw_restart_time = 60;
