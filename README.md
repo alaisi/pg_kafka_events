@@ -9,6 +9,7 @@ PostgreSQL extension for publishing data changes to Apache Kafka.
 Building the extension
 
 ```bash
+$ sudo apt-get install librdkafka-dev
 $ make
 $ sudo make install
 ```
@@ -16,15 +17,24 @@ $ sudo make install
 ```
 # add to postgresql.conf:
 shared_preload_libraries = 'pg_kafka_events'
+
 kafka.database_name = 'mydb'
 kafka.topic = 'mytopic'
 kafka.bootstrap_servers = 'myhostname.example.com:9092'
+
+### optional settings
+# kafka.recvlogical_bin = '/usr/bin/pg_recvlogical'
+# kafka.recvlogical_decoder = 'decoding_json'
 ```
 
 ```sql
 -- run as superuser:
 CREATE EXTENSION pg_kafka_events;
 ```
+
+### Decoder
+
+By default, the extension *requires* installing [decoding-json](https://github.com/leptonix/decoding-json) to decode messages from WAL segments. Other decoders can be configured with ```kafka.recvlogical_decoder``` config property, but currently the decoder must emit newline delimited messages.
 
 ### Example
 

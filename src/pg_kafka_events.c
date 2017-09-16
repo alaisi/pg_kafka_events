@@ -21,6 +21,7 @@ extern void _PG_fini(void);
 
 // set from postgresql.conf
 char* DATABASE_NAME;
+char* RECVLOGICAL_DECODER;
 char* KAFKA_SERVERS;
 char* KAFKA_TOPIC;
 char* RECVLOGICAL_BIN;
@@ -31,7 +32,8 @@ static pid_t child_pid = -1;
 static char buf[4096 * 16];
 static int buf_index = 0;
 
-static rd_kafka_t* pg_kafka_open_producer() {
+static rd_kafka_t* pg_kafka_open_producer()
+{
     char str[512];
     rd_kafka_conf_t* conf = rd_kafka_conf_new();
     if(rd_kafka_conf_set(conf, "bootstrap.servers", KAFKA_SERVERS, str, sizeof(str)) != RD_KAFKA_CONF_OK) {
@@ -44,7 +46,8 @@ static rd_kafka_t* pg_kafka_open_producer() {
     return producer;
 }
 
-static rd_kafka_topic_t* pg_kafka_open_topic(rd_kafka_t* producer) {
+static rd_kafka_topic_t* pg_kafka_open_topic(rd_kafka_t* producer)
+{
     rd_kafka_topic_t* topic;
     if(!(topic = rd_kafka_topic_new(producer, KAFKA_TOPIC, NULL))) {
         ereport(WARNING, (errmsg("rd_kafka_topic_new: %s", rd_kafka_err2str(rd_kafka_last_error()))));
@@ -179,10 +182,8 @@ static void pg_kafka_publisher_main(Datum arg)
     close(pipes[0]);
 }
 
-void _PG_init(void)
+static void pg_kafka_read_config()
 {
-    ereport(LOG, (errmsg("pg_kafka_events started")));
-
     DefineCustomStringVariable("kafka.database_name",
                                gettext_noop("Database to replicate from."),
                                NULL,
@@ -218,7 +219,22 @@ void _PG_init(void)
                                PGC_POSTMASTER,
                                GUC_SUPERUSER_ONLY,
                                NULL, NULL, NULL);
-    
+
+    DefineCustomStringVariable("kafka.recvlogical_decoder",
+                               gettext_noop("pg_recvlogical decoder plugin name."),
+                               NULL,
+                               &RECVLOGICAL_DECODER,
+                               "decoding_json",
+                               PGC_POSTMASTER,
+                               GUC_SUPERUSER_ONLY,
+                               NULL, NULL, NULL);
+}
+
+void _PG_init(void)
+{
+    ereport(LOG, (errmsg("pg_kafka_events started")));
+    pg_kafka_read_config();
+
     BackgroundWorker worker;
     worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
     worker.bgw_restart_time = 60;
