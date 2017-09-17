@@ -101,7 +101,8 @@ static void pg_kafka_publish_messages(char* str, int r, rd_kafka_t* producer, rd
     }
 }
 
-static void pg_kafka_log_err(char* msg) {
+static void pg_kafka_log_err(char* msg)
+{
     ereport(WARNING, (errmsg("%s:%d %s: %s",
                              __FILE__, __LINE__,
                              msg, strerror(errno))));
@@ -246,9 +247,9 @@ void _PG_init(void)
     worker.bgw_restart_time = 60;
     worker.bgw_notify_pid = 0;
     worker.bgw_main = pg_kafka_publisher_main;
+    sprintf(worker.bgw_name, "pg_kafka_events");
     sprintf(worker.bgw_library_name, "pg_kafka_events");
     sprintf(worker.bgw_function_name, "pg_kafka_publisher_main");
-    snprintf(worker.bgw_name, BGW_MAXLEN, "pg_kafka_events");
 
     RegisterBackgroundWorker(&worker);
 }
